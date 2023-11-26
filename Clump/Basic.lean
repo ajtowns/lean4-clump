@@ -66,86 +66,87 @@ instance : HCluster (Int × Nat) where
   zerosize_zerofee := by simp
 
 #check Fee
+#check (foldl Int.add 0)
 
-def Fee (chunk : List Tx) : Int := (map Tx.Fee chunk).foldl Int.add 0
-def Size (chunk : List Tx) : Nat := Sum (map Size chunk)
+def xFee (c : List Tx) : Int := foldl Int.add 0 (map Fee c)
+def xSize (c : List Tx) : Nat := foldl Nat.add 0 (map Size c)
 
-structure FeeSize where
-  fee : Int
-  size : Nat
-deriving Repr
-
-def FeeSize.le (x y : FeeSize) : Prop :=
-  (x.fee * y.size) ≤ (y.fee * x.size)
-
-def FeeSize.same (x y : FeeSize) : Prop :=
-  (x.fee * y.size) = (y.fee * x.size)
-
-instance : LE FeeSize where
-  le := FeeSize.le
-
-instance dec_FeeSize_le : forall (x y : FeeSize), Decidable (x ≤ y) := by
-  intro x y
-  simp [LE.le,FeeSize.le]
-  apply Int.decLe
-
-def FeeSize.add (x y : FeeSize) : FeeSize :=
-  FeeSize.mk (x.fee + y.fee) (x.size + y.size)
-
-instance : Add FeeSize where
-  add := FeeSize.add
-
-def Price (l : List Tx) : FeeSize :=
-  FeeSize.mk (Sum (map C.Fee l)) (Sum (map C.Size l))
-
-mutual
-  def StepFee (l : List FeeSize) : (List Rat) :=
-    StepFee.steps 0 l
-  def StepFee.steps (f : Rat) (l : List FeeSize) :=
-    match l with
-    | nil => [f]
-    | h::t => StepFee.step1 f h t h.size
-  def StepFee.step1 (f : Rat) (v : FeeSize) (l : List FeeSize) (left : Nat) :=
-    match left with
-    | 0 => StepFee.steps f l
-    | left' + 1 => f::(StepFee.step1 (f + v.fee/v.size) v l left')
-end
-  termination_by StepFee.step1 _ _ l left => (l, left + 1); StepFee.steps f l => (l, 0)
-
-def ListRat.le (a b : List Rat) : Prop :=
-  match a, b with
-  | nil, nil => True
-  | ha::ta, hb::tb => (ha ≤ hb) ∧ (ListRat.le ta tb)
-  | _, _ => False -- inconsistent sizes, incomparable
-
-def Diagram (chunks : List (List Tx)) : List Rat :=
-  StepFee (map Price chunks)
-
-def Diagram.le (a b : List (List Tx)) : Prop :=
-  ListRat.le (Diagram a) (Diagram b)
-
-
-
-#eval Diagram [[(1,4),(2,3)],[(2,4)]]
-
-
-def Diagram_Helper : FeeSize → List FeeSize → List FeeSize
-  | x, [] => [x]
-  | x, (y::zs) => match Diagram_Helper (x + y) zs with
-    | [] => []
-    | xyz::w => if (xyz < x) then x::(Diagram_Helper y zs) else (xyz::w)
-
-def Improve_Step : List FeeSize → List FeeSize
-  | [] => []
-  | x::[] => [x]
-  | x::y::z => if (x < y) then ((x+y)::z) else x::(Improve_Step (y::z))
-
-def Improve_Helper : Nat → List FeeSize → List FeeSize
-  | 0 => (fun l => l)
-  | n+1 => (fun l => Improve_Helper n (Improve_Step l))
-
-def WellOrdered : List FeeSize -> Prop
-  | [] => True
-  | _::[] => True
-  | x::y::zz => (¬ x < y) ∧ WellOrdered (y::zz)
-
+ -- structure FeeSize where
+ --   fee : Int
+ --   size : Nat
+ -- deriving Repr
+ --
+ -- def FeeSize.le (x y : FeeSize) : Prop :=
+ --   (x.fee * y.size) ≤ (y.fee * x.size)
+ --
+ -- def FeeSize.same (x y : FeeSize) : Prop :=
+ --   (x.fee * y.size) = (y.fee * x.size)
+ --
+ -- instance : LE FeeSize where
+ --   le := FeeSize.le
+ --
+ --instance dec_FeeSize_le : forall (x y : FeeSize), Decidable (x ≤ y) := by
+ --  intro x y
+ --  simp [LE.le,FeeSize.le]
+ --  apply Int.decLe
+ --
+ --def FeeSize.add (x y : FeeSize) : FeeSize :=
+ --  FeeSize.mk (x.fee + y.fee) (x.size + y.size)
+ --
+ --instance : Add FeeSize where
+ --  add := FeeSize.add
+ --
+ --def Price (l : List Tx) : FeeSize :=
+ --  FeeSize.mk (Sum (map C.Fee l)) (Sum (map C.Size l))
+ --
+ --mutual
+ --  def StepFee (l : List FeeSize) : (List Rat) :=
+ --    StepFee.steps 0 l
+ --  def StepFee.steps (f : Rat) (l : List FeeSize) :=
+ --    match l with
+ --    | nil => [f]
+ --    | h::t => StepFee.step1 f h t h.size
+ --  def StepFee.step1 (f : Rat) (v : FeeSize) (l : List FeeSize) (left : Nat) :=
+ --    match left with
+ --    | 0 => StepFee.steps f l
+ --    | left' + 1 => f::(StepFee.step1 (f + v.fee/v.size) v l left')
+ --end
+ --  termination_by StepFee.step1 _ _ l left => (l, left + 1); StepFee.steps f l => (l, 0)
+ --
+ --def ListRat.le (a b : List Rat) : Prop :=
+ --  match a, b with
+ --  | nil, nil => True
+ --  | ha::ta, hb::tb => (ha ≤ hb) ∧ (ListRat.le ta tb)
+ --  | _, _ => False -- inconsistent sizes, incomparable
+ --
+ --def Diagram (chunks : List (List Tx)) : List Rat :=
+ --  StepFee (map Price chunks)
+ --
+ --def Diagram.le (a b : List (List Tx)) : Prop :=
+ --  ListRat.le (Diagram a) (Diagram b)
+ --
+ --
+ --
+ --#eval Diagram [[(1,4),(2,3)],[(2,4)]]
+ --
+ --
+ --def Diagram_Helper : FeeSize → List FeeSize → List FeeSize
+ --  | x, [] => [x]
+ --  | x, (y::zs) => match Diagram_Helper (x + y) zs with
+ --    | [] => []
+ --    | xyz::w => if (xyz < x) then x::(Diagram_Helper y zs) else (xyz::w)
+ --
+ --def Improve_Step : List FeeSize → List FeeSize
+ --  | [] => []
+ --  | x::[] => [x]
+ --  | x::y::z => if (x < y) then ((x+y)::z) else x::(Improve_Step (y::z))
+ --
+ --def Improve_Helper : Nat → List FeeSize → List FeeSize
+ --  | 0 => (fun l => l)
+ --  | n+1 => (fun l => Improve_Helper n (Improve_Step l))
+ --
+ --def WellOrdered : List FeeSize -> Prop
+ --  | [] => True
+ --  | _::[] => True
+ --  | x::y::zz => (¬ x < y) ∧ WellOrdered (y::zz)
+ --
