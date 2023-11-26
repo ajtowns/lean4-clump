@@ -5,7 +5,6 @@ import Mathlib.Data.List.Perm  -- (l1 ~ l2) is true if list l2 is a permutation 
 universe u
 
 open List
-open Lean
 
 -- Some general helpers
 
@@ -43,7 +42,7 @@ inductive RTC {α : Sort u} (r : α → α → Prop) : α → α → Prop where
   /-- The transitive closure is transitive. -/
   | trans : ∀ a b c, RTC r a b → RTC r b c → RTC r a c
 
-section CluMP
+namespace CluMP
 
 -- This is the data we're working on
 class HCluster (Tx : Type u) where
@@ -53,81 +52,111 @@ class HCluster (Tx : Type u) where
   Size : Tx -> Nat
   zerosize_zerofee : ∀ (t : Tx), Size t = 0 -> Fee t = 0
 
-variable {Tx : Type u} [HCluster Tx]
 open HCluster
 
--- For messing about with #eval, we'll allow writing a tx as (fee, size)
-@[default_instance]
-instance : HCluster (Int × Nat) where
-  parent := fun _ _ => False
-  parent_sensible := by intros; contradiction
-  Fee tx := if let Nat.succ _ := tx.2 then tx.1 else 0
-  Size tx := tx.2
-  zerosize_zerofee := by simp
+section specific
+variable {Tx : Type u} [HCluster Tx]
 
-#check Fee
-#check (foldl Int.add 0)
+def ChunkFee (c : List Tx) : Int := foldl Int.add 0 (map Fee c)
+def ChunkSize (c : List Tx) : Nat := foldl Nat.add 0 (map Size c)
 
-def xFee (c : List Tx) : Int := foldl Int.add 0 (map Fee c)
-def xSize (c : List Tx) : Nat := foldl Nat.add 0 (map Size c)
+/-- Compare two chunks by feerate (less than or equal) -/
+def Feerate_le (a b : List Tx) : Prop :=
+  (ChunkFee a) * (ChunkSize b) ≤ (ChunkFee b * ChunkSize a)
 
- -- structure FeeSize where
- --   fee : Int
- --   size : Nat
- -- deriving Repr
- --
- -- def FeeSize.le (x y : FeeSize) : Prop :=
- --   (x.fee * y.size) ≤ (y.fee * x.size)
- --
- -- def FeeSize.same (x y : FeeSize) : Prop :=
- --   (x.fee * y.size) = (y.fee * x.size)
- --
- -- instance : LE FeeSize where
- --   le := FeeSize.le
- --
- --instance dec_FeeSize_le : forall (x y : FeeSize), Decidable (x ≤ y) := by
- --  intro x y
- --  simp [LE.le,FeeSize.le]
- --  apply Int.decLe
- --
- --def FeeSize.add (x y : FeeSize) : FeeSize :=
- --  FeeSize.mk (x.fee + y.fee) (x.size + y.size)
- --
- --instance : Add FeeSize where
- --  add := FeeSize.add
- --
- --def Price (l : List Tx) : FeeSize :=
- --  FeeSize.mk (Sum (map C.Fee l)) (Sum (map C.Size l))
- --
- --mutual
- --  def StepFee (l : List FeeSize) : (List Rat) :=
- --    StepFee.steps 0 l
- --  def StepFee.steps (f : Rat) (l : List FeeSize) :=
- --    match l with
- --    | nil => [f]
- --    | h::t => StepFee.step1 f h t h.size
- --  def StepFee.step1 (f : Rat) (v : FeeSize) (l : List FeeSize) (left : Nat) :=
- --    match left with
- --    | 0 => StepFee.steps f l
- --    | left' + 1 => f::(StepFee.step1 (f + v.fee/v.size) v l left')
- --end
- --  termination_by StepFee.step1 _ _ l left => (l, left + 1); StepFee.steps f l => (l, 0)
- --
- --def ListRat.le (a b : List Rat) : Prop :=
- --  match a, b with
- --  | nil, nil => True
- --  | ha::ta, hb::tb => (ha ≤ hb) ∧ (ListRat.le ta tb)
- --  | _, _ => False -- inconsistent sizes, incomparable
- --
- --def Diagram (chunks : List (List Tx)) : List Rat :=
- --  StepFee (map Price chunks)
- --
- --def Diagram.le (a b : List (List Tx)) : Prop :=
- --  ListRat.le (Diagram a) (Diagram b)
- --
- --
- --
- --#eval Diagram [[(1,4),(2,3)],[(2,4)]]
+/-- Compare two chunks by feerate (strictly less than) -/
+def Feerate_lt (a b : List Tx) : Prop :=
+  (ChunkFee a) * (ChunkSize b) < (ChunkFee b * ChunkSize a)
+
+/-- Compare two chunks by feerate (greater than or equal) -/
+@[reducible] def Feerate_ge (a b : List Tx) : Prop := Feerate_le b a
+
+/-- Compare two chunks by feerate (strictly greater than) -/
+@[reducible] def Feerate_gt (a b : List Tx) : Prop := Feerate_lt b a
+
+@[inherit_doc] infix:50 " ≤$ "  => Feerate_le
+@[inherit_doc] infix:50 " <$ "  => Feerate_lt
+@[inherit_doc] infix:50 " ≥$ "  => Feerate_ge
+@[inherit_doc] infix:50 " >$ "  => Feerate_gt
+
+instance dec_Feerate_le : forall (x y : List Tx), Decidable (x ≤$ y) := by
+ intro x y
+ simp [LE.le,Feerate_le]
+ apply Int.decLe
+
+instance dec_Feerate_lt : forall (x y : List Tx), Decidable (x <$ y) := by
+ intro x y
+ simp [LT.lt,Feerate_lt]
+ apply Int.decLt
+
+mutual
+  def Diagram (l : List (List Tx)) : (List Rat) :=
+    Diagram.steps 0 l
+  def Diagram.steps (f : Rat) (l : List (List Tx)) :=
+    match l with
+    | nil => [f]
+    | h::t => Diagram.step1 f ((ChunkFee h)/(ChunkSize h)) t (ChunkSize h)
+  def Diagram.step1 (f : Rat) (fpb : Rat) (l : List (List Tx)) (left : Nat) :=
+    match left with
+    | 0 => Diagram.steps f l
+    | left' + 1 => f::(Diagram.step1 (f + fpb) fpb l left')
+end
+  termination_by Diagram.step1 _ _ l left => (l.length, left + 1); Diagram.steps _ l => (l.length, 0)
+
+def ListRat.le (a b : List Rat) : Prop :=
+  match a, b with
+  | nil, nil => True
+  | ha::ta, hb::tb => (ha ≤ hb) ∧ (ListRat.le ta tb)
+  | _, _ => False -- inconsistent sizes, incomparable
+
+def ListRat.lt (a b : List Rat) : Prop :=
+  match a, b with
+  | nil, nil => True
+  | ha::ta, hb::tb => (ha < hb) ∧ (ListRat.lt ta tb)
+  | _, _ => False -- inconsistent sizes, incomparable
+
+instance dec_ListRat_le : forall (x y : List Rat), Decidable (ListRat.le x y) := by
+  intro x; induction x with
+  | nil => intro y; cases y; simp [ListRat.le]; exact decidableTrue; simp [ListRat.le]; exact decidableFalse
+  | cons h t t_ih => intro y; cases y with
+    | nil => simp [ListRat.le]; exact decidableFalse
+    | cons yh yt => apply And.decidable
+
+instance dec_ListRat_lt : forall (x y : List Rat), Decidable (ListRat.lt x y) := by
+  intro x; induction x with
+  | nil => intro y; cases y; simp [ListRat.lt]; exact decidableTrue; simp [ListRat.lt]; exact decidableFalse
+  | cons h t t_ih => intro y; cases y with
+    | nil => simp [ListRat.lt]; exact decidableFalse
+    | cons yh yt => apply And.decidable
+
+class DiagramCmp (α : Type u) where
+  /-- Compare two chunkings by diagram (less than or equal) -/
+  le : α → α → Prop
+  /-- Compare two chunkings by diagram (strictly less than) -/
+  lt : α → α → Prop
+
+/-- Compare two chunkings by diagram (greater than or equal) -/
+@[reducible] def DiagramCmp.ge {α : Type u} [DiagramCmp α] (a b : α) : Prop := DiagramCmp.le b a
+
+/-- Compare two chunkings by diagram (strictly greater than) -/
+@[reducible] def DiagramCmp.gt {α : Type u} [DiagramCmp α] (a b : α) : Prop := DiagramCmp.lt b a
+
+/-- Provides ≤d notation for diagram comparison -/
+instance : DiagramCmp (List (List Tx)) where
+  le (a b : List (List Tx)) := ListRat.le (Diagram a) (Diagram b)
+  lt (a b : List (List Tx)) := ListRat.lt (Diagram a) (Diagram b)
+
+instance dec_Diagram_le : forall (x y : List (List Tx)), Decidable (DiagramCmp.le x y) := by
+  intro x y; simp [DiagramCmp.le]; apply dec_ListRat_le
+
+instance dec_Diagram_lt : forall (x y : List (List Tx)), Decidable (DiagramCmp.lt x y) := by
+  intro x y; simp [DiagramCmp.lt]; apply dec_ListRat_lt
+
+@[inherit_doc] infix:50 " ≤d "  => DiagramCmp.le
+@[inherit_doc] infix:50 " <d "  => DiagramCmp.lt
+@[inherit_doc] infix:50 " ≥d "  => DiagramCmp.ge
+@[inherit_doc] infix:50 " >d "  => DiagramCmp.gt
+
  --
  --
  --def Diagram_Helper : FeeSize → List FeeSize → List FeeSize
@@ -150,3 +179,6 @@ def xSize (c : List Tx) : Nat := foldl Nat.add 0 (map Size c)
  --  | _::[] => True
  --  | x::y::zz => (¬ x < y) ∧ WellOrdered (y::zz)
  --
+
+end specific
+end CluMP
