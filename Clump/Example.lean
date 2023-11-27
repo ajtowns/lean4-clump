@@ -1,12 +1,14 @@
 import Clump.Basic
+import Clump.Feerate
+import Clump.Diagram
+import Clump.Chunking
 
-open AJHelper
 open List
 open CluMP
 
 -- For messing about with #eval, we'll allow writing a tx as (fee, size)
 @[default_instance]
-instance : HCluster (Int × Nat) where
+instance : Cluster (Int × Nat) where
   parent := fun _ _ => False
   parent_sensible := by intros; contradiction
   Fee tx := if let Nat.succ _ := tx.2 then tx.1 else 0
