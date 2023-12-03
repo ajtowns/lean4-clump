@@ -2,11 +2,13 @@
    else in the standard library -/
 
 import Init.Data.List.Basic
+import Std.Data.Rat.Basic
 import Mathlib.Data.Rat.Defs
 
 universe u
 
 open List
+open Rat
 
 -- Some general helpers
 
@@ -28,9 +30,6 @@ instance : HSum Nat where
 instance : HSum Int where
   zero := 0
   add := Int.add
-
-instance : Append (List α) where
-  append := List.append
 end AJHelper
 
 open AJHelper
@@ -44,7 +43,7 @@ inductive RTC {α : Sort u} (r : α → α → Prop) : α → α → Prop where
   /-- The transitive closure is transitive. -/
   | trans : ∀ a b c, RTC r a b → RTC r b c → RTC r a c
 
-theorem divNat_one: forall (c : Nat), ↑c = c/.1 := by
+theorem divNat_one: forall (c : Nat), ↑c = c /. 1 := by
   intro c; rw [divInt_one]; simp
 
 instance dec_And {a b} [Ha: Decidable a] [Hb: Decidable b] : Decidable (a ∧ b) := by
@@ -56,6 +55,14 @@ instance dec_And {a b} [Ha: Decidable a] [Hb: Decidable b] : Decidable (a ∧ b)
 
 instance dec_Preorder_lt {α : Type u} [Preorder α] [decle: @DecidableRel α (· ≤ ·)]: @DecidableRel α (· < ·) :=
   by intro a b; simp; rw [lt_iff_le_not_le]; apply dec_And
+
+theorem map_to_nil: forall (l : List α) (f : α -> β), map f l = [] → l = [] := by
+  intro l; cases l with
+  | nil => intros; trivial
+  | cons h t => intros f Hmap; simp [map] at Hmap
+
+theorem and_imp_to_imp_imp: forall (a b c : Prop), (a → b → c) → ((a ∧ b) → c) := by
+  intro a b c Habc Hab; apply Habc; simp [Hab]; simp [Hab]
 
 def Monotonic {α : Type u} (r : α → α → Prop) (l : List α) : Prop :=
   match l with
@@ -90,10 +97,13 @@ theorem Monotonic_app3: forall (r) (a b c : List α), (¬ b = []) → Monotonic 
       | cons hb tb => simp [Monotonic]; simp [Monotonic] at Hab; apply And.intro; apply Hab.left; rw [<-cons_append]; exact Hbc
     | cons ha2 ta2 => simp; rw [<-append_assoc]; simp [Monotonic]; simp [Monotonic] at Hab; apply And.intro; apply Hab.left; rw [<-append_assoc]; apply ta_ih; exact Hb; rw [cons_append]; apply Hab.right; apply Hbc
 
-/-- without loss of generality "tactic" so i don't repeat myself too much -/
+/-- without loss of generality "tactic" so i don't repeat myself too much. maybe it will be useful! -/
 theorem wlog {α β : Type u} (P : α → α → Prop) [hP : @DecidableRel α P] (Q : β -> Prop) (X : α → α → β) :
-  (forall (a b), P a b -> Q (X a b)) -> (forall (a b), ¬ P a b -> P b a) -> forall (a b), Q (if (P a b) then X a b else X b a) := by
-  intro hPQ hnP a b; have hPab : Decidable (P a b); apply hP; cases hPab with
+  (forall (a b), P a b -> Q (X a b))
+    -> (forall (a b), ¬ P a b -> P b a)
+    -> forall (a b), Q (if (P a b) then X a b else X b a) := by
+  intro hPQ hnP a b; have hPab : Decidable (P a b) := by apply hP;
+  cases hPab with
   | isFalse hPab => simp [hPab]; apply hPQ; apply hnP; exact hPab
   | isTrue hPab => simp [hPab]; apply hPQ; apply hPab
 

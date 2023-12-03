@@ -1,61 +1,44 @@
 /- Basics of the cluster mempool data structure -/
 
 import Init.Data.List.Basic
-import Std.Data.Rat.Basic
-import Clump.Basic
+import Clump.Helper
 
 universe u
 
 open List
-open Rat
 
 namespace CluMP
 
 -- This is the data we're working on
-class Cluster (Tx : Type u) where
+class Cluster (Tx : Type u) [DecidableEq Tx] where
   parent : Tx -> Tx -> Prop
+  decParent : ∀ (a b : Tx), Decidable (parent a b)
   parent_sensible : ∀ (p c : Tx), parent p c -> ¬ (RTC parent p c)
   Fee : Tx -> Int
   Size : Tx -> Nat
   zerosize_zerofee : ∀ (t : Tx), Size t = 0 -> Fee t = 0
 
+/-- Chunks are non-empty lists of txs -/
+def Chunk (Tx : Type u) [DecidableEq Tx] := { l : List Tx // l ≠ [] }
+
+/-- Chunkings are a list of chunks -/
+abbrev Chunking (Tx : Type u) [DecidableEq Tx] := List (Chunk Tx)
+
 /--
  Theory is:
-    Cluster -- gives all the types and underlying representations
-    abbrev Chunking := List (List Tx)
-    abbrev Diagram := List Rat
-
-    PartialOrder (List Tx) -- compare by feerate
-
-    Raise : List Tx -> Chunking   -- raise each tx into [tx]
-    Diagram : Chunking -> Diagram
-    Optimise : Chunking -> Chunking
-    Drop : Chunking -> List Tx    -- concatenate the chunks
-
-    -- does Optimise [] return [] or [[]] ? does a Chunking ever have empty lists as elements?
-
-    Reorder (chunk other : List Tx) : List Tx -- reorder "chunk" to be in "other" order
-
-    PartialOrder Chunking  -- compare by diagram
+    Reorder (c : Chunk) (other : List Tx) : Chunk -- reorder "chunk" to be in "other" order??
 
     theorems:
       Perm (Reorder a o) a -- Reordering just reorders
-      Drop (Raise a) = a
-      Drop (Optimise a) = Drop a  -- order preserving
-      (Optimise a) >= a
-      (Optimise (Raise (Drop a))) >= a
-      Optimise (a ++ b) = Optimise ((Optimise a) ++ (Optimise b))
-      Optimise ((Optimise a) ++ b) = Optimise (a ++ b)
-      Optimise (a ++ (Optimise b)) = Optimise (a ++ b)
 
       -- if a particular set of txs is the first chunk, optimising just those txs generates the same chunk
-      Optimise a = h::t -> Optimise [Raise h] = [h]
+      Merge a = h::t -> Merge [Raise h] = [h]
 
       -- reordering a chunk only improves things
-      Optimise a = [[Drop a]] -> Perm (Drop a) (Drop b) -> Optimise b >= Optimise (Raise a)
+      Merge a = [[Drop a]] -> Perm (Drop a) (Drop b) -> Merge b >= Merge (Raise a)
 
     pim-first base cmp:
-      Reorder (head (Optimise (Raise base))) cmp
+      Reorder (head (Merge (Raise base))) cmp
 
 
 
